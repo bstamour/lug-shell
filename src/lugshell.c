@@ -106,7 +106,6 @@ static int process_pipeline(int in, int out, char* cmd[]) {
   int i = 0;
   while (1) {
     if (cmd[i] == NULL) {
-      // End of the stream. Process everything up to the end as a pipeline.
       return invoke_cmd(in, out, cmd_start);
     } else if (strcmp(cmd[i], "|") == 0) {
       // Kick off a new pipeline.
@@ -127,7 +126,6 @@ static int process_disjunction(int in, int out, char* cmd[]) {
   int i = 0;
   while (1) {
     if (cmd[i] == NULL) {
-      // End of the stream. Process everything up to the end as a pipeline.
       result = process_pipeline(in, out, pipeline_start);
       break;
     } else if (strcmp(cmd[i], "||") == 0) {
@@ -149,7 +147,6 @@ static int process_conjunction(int in, int out, char* cmd[]) {
   int i = 0;
   while (1) {
     if (cmd[i] == NULL) {
-      // End of the stream. Process everything up to the end as a pipeline.
       result = process_disjunction(in, out, disj_start);
       break;
     } else if (strcmp(cmd[i], "&&") == 0) {
@@ -171,7 +168,6 @@ static int process_list(int in, int out, char* cmd[]) {
   int i = 0;
   while (1) {
     if (cmd[i] == NULL) {
-      // End of the stream. Process everything up to the end as a pipeline.
       result = process_conjunction(in, out, conj_start);
       break;
     } else if (strcmp(cmd[i], ";") == 0) {
@@ -184,11 +180,14 @@ static int process_list(int in, int out, char* cmd[]) {
   return result;
 }
 
-static void process(char* input, int count) {
+static void process(int in, int out, char* input, int count) {
   if (count == 0) {
     return;
   }
 
+  // Tokenize the input line into an array of strings, one per
+  // token, separated by whitespace. Final string in the array is a
+  // NULL pointer.
   char* tokens[1024] = {};
   char* saveptr = NULL;
   {
@@ -208,7 +207,7 @@ static void process(char* input, int count) {
     (void) (action->action)();
   } else {
     // Fall back to regular invocation.
-    process_list(STDIN_FILENO, STDOUT_FILENO, tokens);
+    process_list(in, out, tokens);
   }
 }
 
@@ -225,6 +224,10 @@ int main() {
   fflush(stdout);
 
   if (sigsetjmp(sigint_buf, 1) == 1) {
+    // When we catch a Ctrl-C, we do a longjump from the signal
+    // handler and wind up back here. Put out a newline so the
+    // output to the user looks cleaner, then immediately fall back
+    // into the read/eval loop.
     fputc('\n', stdout);
   }
   while (1) {
@@ -236,7 +239,6 @@ int main() {
       break;
     }
     chomp(buffer);
-    // Process the line we read.
-    process(buffer, strlen(buffer));
+    process(STDIN_FILENO, STDOUT_FILENO, buffer, strlen(buffer));
   }
 }
