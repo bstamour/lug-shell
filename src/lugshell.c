@@ -26,16 +26,16 @@
  */
 
 #include <errno.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
-#include <readline/readline.h>
 #include <readline/history.h>
+#include <readline/readline.h>
 
 static jmp_buf sigint_buf;
 
@@ -55,11 +55,9 @@ static int do_echo() {
 }
 
 static struct builtin_action {
-  char* name;
+  char *name;
   int (*action)();
-} builtins[] = {
-  { "echo", do_echo }
-};
+} builtins[] = {{"echo", do_echo}};
 
 /**
  * @brief If the last character of the provided string is a newline,
@@ -67,7 +65,7 @@ static struct builtin_action {
  *
  * @param str The string to chomp.
  */
-static void chomp(char* str) {
+static void chomp(char *str) {
   int len = strlen(str);
   if (len == 0) {
     return;
@@ -84,7 +82,7 @@ static void chomp(char* str) {
  * @returns A pointer to the associated builtin_action struct,
  * or a null pointer if no such action is found.
  */
-static struct builtin_action* find_builtin(char* cmd) {
+static struct builtin_action *find_builtin(char *cmd) {
   int elem_count = sizeof(builtins) / sizeof(builtins[0]);
   for (int i = 0; i != elem_count; ++i) {
     if (strcmp(builtins[i].name, cmd) == 0) {
@@ -102,7 +100,7 @@ static struct builtin_action* find_builtin(char* cmd) {
  * @param args The argument list. The final char* must be null.
  * @returns The exit status of the invoked command.
  */
-static int invoke_cmd(int in, int out, char* args[]) {
+static int invoke_cmd(int in, int out, char *args[]) {
   pid_t pid = fork();
   if (pid < 0) {
     // forking error
@@ -143,8 +141,8 @@ static int invoke_cmd(int in, int out, char* args[]) {
  * @param args The argument list. The final char* must be null.
  * @returns The exit status of the final command of the pipeline.
  */
-static int process_pipeline(int in, int out, char* cmd[]) {
-  char** cmd_start = &cmd[0];
+static int process_pipeline(int in, int out, char *cmd[]) {
+  char **cmd_start = &cmd[0];
   int i = 0;
   while (1) {
     if (cmd[i] == NULL) {
@@ -174,8 +172,8 @@ static int process_pipeline(int in, int out, char* cmd[]) {
  * short-circuits: it stops evaluating pipelines once the first
  * pipeline that returns a zero exit status is run.
  */
-static int process_disjunction(int in, int out, char* cmd[]) {
-  char** pipeline_start = &cmd[0];
+static int process_disjunction(int in, int out, char *cmd[]) {
+  char **pipeline_start = &cmd[0];
   int result = 0;
   int i = 0;
   while (1) {
@@ -207,8 +205,8 @@ static int process_disjunction(int in, int out, char* cmd[]) {
  * and short-circuits: it stops evaluating disjunctions once the
  * first disjunction that returns a non-zero exit status is run.
  */
-static int process_conjunction(int in, int out, char* cmd[]) {
-  char** disj_start = &cmd[0];
+static int process_conjunction(int in, int out, char *cmd[]) {
+  char **disj_start = &cmd[0];
   int result = 0;
   int i = 0;
   while (1) {
@@ -236,8 +234,8 @@ static int process_conjunction(int in, int out, char* cmd[]) {
  * @param args The argument list. The final char* must be null.
  * @returns The exit status of the final conjunction in the list.
  */
-static int process_list(int in, int out, char* cmd[]) {
-  char** conj_start = &cmd[0];
+static int process_list(int in, int out, char *cmd[]) {
+  char **conj_start = &cmd[0];
   int result = 0;
   int i = 0;
   while (1) {
@@ -263,7 +261,7 @@ static int process_list(int in, int out, char* cmd[]) {
  * @param input The input string read from the user.
  * @param count The length of the input string.
  */
-static void process(int in, int out, char* input, int count) {
+static void process(int in, int out, char *input, int count) {
   if (count == 0) {
     return;
   }
@@ -271,12 +269,12 @@ static void process(int in, int out, char* input, int count) {
   // Tokenize the input line into an array of strings, one per
   // token, separated by whitespace. Final string in the array is a
   // NULL pointer.
-  char* tokens[1024] = {};
-  char* saveptr = NULL;
+  char *tokens[1024] = {};
+  char *saveptr = NULL;
   {
     int i = 0;
-    for (char* to_tokenize = input; i != 1023; to_tokenize = NULL, ++i) {
-      char* token = strtok_r(to_tokenize, " ", &saveptr);
+    for (char *to_tokenize = input; i != 1023; to_tokenize = NULL, ++i) {
+      char *token = strtok_r(to_tokenize, " ", &saveptr);
       if (token == NULL) {
         break;
       }
@@ -285,9 +283,9 @@ static void process(int in, int out, char* input, int count) {
     tokens[i] = NULL;
   }
 
-  if (struct builtin_action* action = find_builtin(tokens[0])) {
+  if (struct builtin_action *action = find_builtin(tokens[0])) {
     // handle any carved-out builtin functions.
-    (void) (action->action)();
+    (void)(action->action)();
   } else {
     // Fall back to regular invocation.
     process_list(in, out, tokens);
@@ -306,7 +304,7 @@ int main() {
 
   signal(SIGINT, handle_signal);
 
-  char* path = getenv("PATH");
+  char *path = getenv("PATH");
 
   fprintf(stdout, "lugshell! Heck yeah!\n");
   fprintf(stdout, path);
@@ -321,7 +319,7 @@ int main() {
     fputc('\n', stdout);
   }
 
-  char* input;
+  char *input;
   while ((input = readline("% ")) != NULL) {
     if (input[0] != '\0') {
       add_history(input); // Add non-empty lines to history
