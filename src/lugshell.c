@@ -1,24 +1,28 @@
-/*
-Basic Grammar:
-==============
-
-list        ::= conjunction
-              | conjunction LIST-SYMB list
-
-conjunction ::= disjunction
-              | disjunction AND-SYMB conjunction
-
-disjunction ::= pipeline
-              | pipeline OR-SYMB disjunction
-
-pipeline    ::= command
-              | command PIPE-SYMB pipeline
-
-LIST-SYMB ::= ';'
-AND-SYMB  ::= '&&'
-OR-SYMB   ::= '||'
-PIPE-SYMB ::= '|'
-
+/**
+ * @file lugshell.c
+ * @brief Implements a simple shell in C.
+ *
+ * Basic Grammar
+ * =============
+ *
+ * list        ::= conjunction
+ *               | conjunction LIST-SYMB list
+ *
+ * conjunction ::= disjunction
+ *               | disjunction AND-SYMB conjunction
+ *
+ * disjunction ::= pipeline
+ *               | pipeline OR-SYMB disjunction
+ *
+ * pipeline    ::= command
+ *               | command PIPE-SYMB pipeline
+ *
+ * LIST-SYMB ::= ';'
+ * AND-SYMB  ::= '&&'
+ * OR-SYMB   ::= '||'
+ * PIPE-SYMB ::= '|'
+ *
+ * @author Bryan St. Amour
  */
 
 #include <errno.h>
@@ -35,10 +39,16 @@ PIPE-SYMB ::= '|'
 
 static jmp_buf sigint_buf;
 
+/**
+ * @brief Signal handler. Jumps back to main via longjump.
+ */
 static void handle_signal(int) {
   siglongjmp(sigint_buf, 1);
 }
 
+/**
+ * @brief Implements built-in echo functionality.
+ */
 static int do_echo() {
   fprintf(stdout, "echo!!!\n");
   return 0;
@@ -51,6 +61,12 @@ static struct builtin_action {
   { "echo", do_echo }
 };
 
+/**
+ * @brief If the last character of the provided string is a newline,
+ * then remove it (by converting it to a null character).
+ *
+ * @param str The string to chomp.
+ */
 static void chomp(char* str) {
   int len = strlen(str);
   if (len == 0) {
@@ -61,6 +77,13 @@ static void chomp(char* str) {
   }
 }
 
+/**
+ * @brief Finds the associated builtin action.
+ *
+ * @param cmd The name of the action to find.
+ * @returns A pointer to the associated builtin_action struct,
+ * or a null pointer if no such action is found.
+ */
 static struct builtin_action* find_builtin(char* cmd) {
   int elem_count = sizeof(builtins) / sizeof(builtins[0]);
   for (int i = 0; i != elem_count; ++i) {
@@ -71,6 +94,14 @@ static struct builtin_action* find_builtin(char* cmd) {
   return NULL;
 }
 
+/**
+ * @brief Invokes the simple command "cmd arg1 arg2 ...".
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param args The argument list. The final char* must be null.
+ * @returns The exit status of the invoked command.
+ */
 static int invoke_cmd(int in, int out, char* args[]) {
   pid_t pid = fork();
   if (pid < 0) {
@@ -104,6 +135,14 @@ static int invoke_cmd(int in, int out, char* args[]) {
   }
 }
 
+/**
+ * @brief Processes the pipeline cmd | cmd | ... | cmd
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param args The argument list. The final char* must be null.
+ * @returns The exit status of the final command of the pipeline.
+ */
 static int process_pipeline(int in, int out, char* cmd[]) {
   char** cmd_start = &cmd[0];
   int i = 0;
@@ -123,6 +162,18 @@ static int process_pipeline(int in, int out, char* cmd[]) {
   }
 }
 
+/**
+ * @brief Processes the disjunction cmd || cmd || ... || cmd
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param args The argument list. The final char* must be null.
+ * @returns The exit status of the disjunction of exist statuses.
+ *
+ * @details This function evaluates its pipelines left-to-right, and
+ * short-circuits: it stops evaluating pipelines once the first
+ * pipeline that returns a zero exit status is run.
+ */
 static int process_disjunction(int in, int out, char* cmd[]) {
   char** pipeline_start = &cmd[0];
   int result = 0;
@@ -144,6 +195,18 @@ static int process_disjunction(int in, int out, char* cmd[]) {
   return result;
 }
 
+/**
+ * @brief Processes the conjunction cmd && cmd && ... && cmd
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param args The argument list. The final char* must be null.
+ * @returns The exit status of the conjunction of exist statuses.
+ *
+ * @details This function evaluates its disjunctions left-to-right,
+ * and short-circuits: it stops evaluating disjunctions once the
+ * first disjunction that returns a non-zero exit status is run.
+ */
 static int process_conjunction(int in, int out, char* cmd[]) {
   char** disj_start = &cmd[0];
   int result = 0;
@@ -165,6 +228,14 @@ static int process_conjunction(int in, int out, char* cmd[]) {
   return result;
 }
 
+/**
+ * @brief Processes the list cmd ; cmd ; ... ; cmd
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param args The argument list. The final char* must be null.
+ * @returns The exit status of the final conjunction in the list.
+ */
 static int process_list(int in, int out, char* cmd[]) {
   char** conj_start = &cmd[0];
   int result = 0;
@@ -183,6 +254,15 @@ static int process_list(int in, int out, char* cmd[]) {
   return result;
 }
 
+/**
+ * @brief Tokenizes the input string, and then evaluates the
+ * token stream.
+ *
+ * @param in The file descriptor for standard in.
+ * @param out The file descriptor for standard out.
+ * @param input The input string read from the user.
+ * @param count The length of the input string.
+ */
 static void process(int in, int out, char* input, int count) {
   if (count == 0) {
     return;
@@ -214,6 +294,13 @@ static void process(int in, int out, char* input, int count) {
   }
 }
 
+/**
+ * @brief main entrypoint for the program.
+ *
+ * @details Sets up the signal handlers and other initial state,
+ * then loops, reading user input via Readline, and evaluates their
+ * command string and prints the result.
+ */
 int main() {
   // Do startup things.
 
