@@ -1,3 +1,26 @@
+/*
+Basic Grammar:
+==============
+
+list        ::= conjunction
+              | conjunction LIST-SYMB list
+
+conjunction ::= disjunction
+              | disjunction AND-SYMB conjunction
+
+disjunction ::= pipeline
+              | pipeline OR-SYMB disjunction
+
+pipeline    ::= command
+              | command PIPE-SYMB pipeline
+
+LIST-SYMB ::= ';'
+AND-SYMB  ::= '&&'
+OR-SYMB   ::= '||'
+PIPE-SYMB ::= '|'
+
+ */
+
 #include <errno.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -37,7 +60,6 @@ static void chomp(char* str) {
 
 static struct builtin_action* find_builtin(char* cmd) {
   int elem_count = sizeof(builtins) / sizeof(builtins[0]);
-
   for (int i = 0; i != elem_count; ++i) {
     if (strcmp(builtins[i].name, cmd) == 0) {
       return &builtins[i];
@@ -46,24 +68,120 @@ static struct builtin_action* find_builtin(char* cmd) {
   return NULL;
 }
 
-static void invoke_cmd(char* args[]) {
+static int invoke_cmd(int in, int out, char* args[]) {
   pid_t pid = fork();
   if (pid < 0) {
     // forking error
   } else if (pid == 0) {
     // the child
+    if (in != STDIN_FILENO) {
+      dup2(in, STDIN_FILENO);
+      close(in);
+    }
+    if (out != STDOUT_FILENO) {
+      dup2(out, STDOUT_FILENO);
+      close(out);
+    }
     execvp(args[0], args);
-
     fprintf(stdout, "Exec failed: %s\n", strerror(errno));
     exit(1);
   } else {
-    // the parent
+    if (in != STDIN_FILENO) {
+      close(in);
+    }
+    if (out != STDOUT_FILENO) {
+      close(out);
+    }
     int status;
     waitpid(pid, &status, 0);
     if (WIFEXITED(status)) {
-      // it exited.
+      return WEXITSTATUS(status);
     }
+    return -1; // error?
   }
+}
+
+static int process_pipeline(int in, int out, char* cmd[]) {
+  char** cmd_start = &cmd[0];
+  int i = 0;
+  while (1) {
+    if (cmd[i] == NULL) {
+      // End of the stream. Process everything up to the end as a pipeline.
+      return invoke_cmd(in, out, cmd_start);
+    } else if (strcmp(cmd[i], "|") == 0) {
+      // Kick off a new pipeline.
+      cmd[i] = NULL;
+      int pipe_fd[2];
+      pipe(pipe_fd);
+      (void)invoke_cmd(in, pipe_fd[1], cmd_start);
+      in = pipe_fd[0];
+      cmd_start = &cmd[i + 1]; // Skip the nulled pipe.
+    }
+    ++i;
+  }
+}
+
+static int process_disjunction(int in, int out, char* cmd[]) {
+  char** pipeline_start = &cmd[0];
+  int result = 0;
+  int i = 0;
+  while (1) {
+    if (cmd[i] == NULL) {
+      // End of the stream. Process everything up to the end as a pipeline.
+      result = process_pipeline(in, out, pipeline_start);
+      break;
+    } else if (strcmp(cmd[i], "||") == 0) {
+      cmd[i] = NULL;
+      result = process_pipeline(in, out, pipeline_start);
+      if (result == 0) {
+        break;
+      }
+      pipeline_start = &cmd[i + 1];
+    }
+    ++i;
+  }
+  return result;
+}
+
+static int process_conjunction(int in, int out, char* cmd[]) {
+  char** disj_start = &cmd[0];
+  int result = 0;
+  int i = 0;
+  while (1) {
+    if (cmd[i] == NULL) {
+      // End of the stream. Process everything up to the end as a pipeline.
+      result = process_disjunction(in, out, disj_start);
+      break;
+    } else if (strcmp(cmd[i], "&&") == 0) {
+      cmd[i] = NULL;
+      result = process_disjunction(in, out, disj_start);
+      if (result != 0) {
+        break;
+      }
+      disj_start = &cmd[i + 1];
+    }
+    ++i;
+  }
+  return result;
+}
+
+static int process_list(int in, int out, char* cmd[]) {
+  char** conj_start = &cmd[0];
+  int result = 0;
+  int i = 0;
+  while (1) {
+    if (cmd[i] == NULL) {
+      // End of the stream. Process everything up to the end as a pipeline.
+      result = process_conjunction(in, out, conj_start);
+      break;
+    } else if (strcmp(cmd[i], ";") == 0) {
+      cmd[i] = NULL;
+      result = process_conjunction(in, out, conj_start);
+      conj_start = &cmd[i + 1];
+    }
+    ++i;
+  }
+  return result;
 }
 
 static void process(char* input, int count) {
@@ -90,7 +208,7 @@ static void process(char* input, int count) {
     (void) (action->action)();
   } else {
     // Fall back to regular invocation.
-    invoke_cmd(tokens);
+    process_list(STDIN_FILENO, STDOUT_FILENO, tokens);
   }
 }
 
