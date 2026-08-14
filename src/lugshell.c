@@ -30,6 +30,9 @@ PIPE-SYMB ::= '|'
 #include <signal.h>
 #include <sys/wait.h>
 
+#include <readline/readline.h>
+#include <readline/history.h>
+
 static jmp_buf sigint_buf;
 
 static void handle_signal(int) {
@@ -230,15 +233,14 @@ int main() {
     // into the read/eval loop.
     fputc('\n', stdout);
   }
-  while (1) {
-    char buffer[1024];
-    fprintf(stdout, "%% ");
-    fflush(stdout);
-    fgets(buffer, sizeof(buffer) - 1, stdin);
-    if (feof(stdin)) {
-      break;
+
+  char* input;
+  while ((input = readline("% ")) != NULL) {
+    if (input[0] != '\0') {
+      add_history(input); // Add non-empty lines to history
+      chomp(input);
+      process(STDIN_FILENO, STDOUT_FILENO, input, strlen(input));
     }
-    chomp(buffer);
-    process(STDIN_FILENO, STDOUT_FILENO, buffer, strlen(buffer));
+    free(input); // Readline allocates memory that must be freed
   }
 }
