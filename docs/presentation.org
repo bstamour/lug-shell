@@ -100,6 +100,9 @@ SPACE-SYMB ::= ' '
 
 * Lists
 
+list        ::= conjunction
+              | conjunction LIST-SYMB list
+
 - List: collection of "conjunctions".
 - Separated by ';' tokens.
 - Execute each conjunction one-by-one.
@@ -109,6 +112,9 @@ SPACE-SYMB ::= ' '
 
 
 * Conjnuctions
+
+conjunction ::= disjunction
+              | disjunction AND-SYMB conjunction
 
 - Conjunction: a collection of "disjunctions" AND-ed together.
 - Logically D1 && D2 && ... && DN
@@ -120,6 +126,9 @@ SPACE-SYMB ::= ' '
 
 * Disjunctions
 
+disjunction ::= pipeline
+              | pipeline OR-SYMB disjunction
+
 - Disjunction: a collection of "pipelines" OR-ed together.
 - Logically P1 || P2 || ... || PN
 - Result code is true (zero) if at least one of P1 ... PN result code is true.
@@ -129,6 +138,9 @@ SPACE-SYMB ::= ' '
 
 
 * Pipelines
+
+pipeline    ::= command
+              | command PIPE-SYMB pipeline
 
 - Where the fun starts!
 - Pipeline: a collection of "commands" separated by a pipe-operator.
