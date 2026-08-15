@@ -322,7 +322,7 @@ int main() {
   char *input;
   while ((input = readline("% ")) != NULL) {
     if (input[0] != '\0') {
-      add_history(input); // Add non-empty lines to history
+      add_history(input);
       chomp(input);
       process(STDIN_FILENO, STDOUT_FILENO, input, strlen(input));
     }

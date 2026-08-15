@@ -1,0 +1,198 @@
+#+TITLE: LUG Meets WCCUG
+#+SUBTITLE: Building a Linux Shell in C
+#+AUTHOR: Bryan St. Amour
+
+
+* Overview
+
+- Shell: primary way to interact with *nix systems.
+- sh, ksh, bash, ash, dash, zsh, fish
+- csh, tcsh
+- oil?
+
+
+* Why Write One?
+
+- FUN!
+- Implementing one from scratch touches on lots of *nix:
+  - process spawning
+  - IPC
+  - signalling
+  - job control
+  - IO redirection
+  - parsing
+  - ...
+- This talk will not touch on all of that.
+- But will touch on enough of that.
+
+
+* Why This Talk?
+
+- Think of it as "intro to systems programming"
+- You may be able to talk some of the talk.
+- With practice afterward you may walk some of the walk.
+
+
+* High Level Sketch
+
+- Read a line of input from the user.
+- Parse it into tokens.
+- Perform actions.
+- Print results.
+- Demo session in bash.
+
+
+* Our Shell Grammar
+
+user-input  ::= list
+
+list        ::= conjunction
+              | conjunction LIST-SYMB list
+
+conjunction ::= disjunction
+              | disjunction AND-SYMB conjunction
+
+disjunction ::= pipeline
+              | pipeline OR-SYMB disjunction
+
+pipeline    ::= command
+              | command PIPE-SYMB pipeline
+
+command     ::= word
+              | word SPACE-SYMB command
+
+LIST-SYMB  ::= ';'
+AND-SYMB   ::= '&&'
+OR-SYMB    ::= '||'
+PIPE-SYMB  ::= '|'
+SPACE-SYMB ::= ' '
+
+
+* main()
+
+- Setting things up.
+- Signal Handling
+- If user inputs Ctrl-C, we want to kill the current input, but not kill the shell.
+- Need to catch SIGINT with signal().
+- More on this later.
+
+[[file:../src/lugshell.c::302]]
+
+
+* Reading Input
+
+- GNU Readline library.
+- Handles keyboard interaction:
+- Ctrl-A, Ctrl-E, history, etc.
+
+[[file:../src/lugshell.c::322]]
+
+* Processing Input
+
+- Process each line one by one.
+- Tokenize the line by whitespace.
+- Collect the tokens into an array of strings.
+- If first token matches a "built-in" function, execute it.
+- Otherwise, process it as a "list".
+
+[[file:../src/lugshell.c::264]]
+
+
+* Lists
+
+- List: collection of "conjunctions".
+- Separated by ';' tokens.
+- Execute each conjunction one-by-one.
+- Result code is result of last conjunction in the list.
+
+[[file:../src/lugshell.c::237]]
+
+
+* Conjnuctions
+
+- Conjunction: a collection of "disjunctions" AND-ed together.
+- Logically D1 && D2 && ... && DN
+- Result code is true (zero) only if all D1 ... DN result codes are true.
+- False otherwise.
+
+[[file:../src/lugshell.c::208]]
+
+
+* Disjunctions
+
+- Disjunction: a collection of "pipelines" OR-ed together.
+- Logically P1 || P2 || ... || PN
+- Result code is true (zero) if at least one of P1 ... PN result code is true.
+- False only if all P1 ... PN are false.
+
+[[file:../src/lugshell.c::175]]
+
+
+* Pipelines
+
+- Where the fun starts!
+- Pipeline: a collection of "commands" separated by a pipe-operator.
+- C1 | C2 -- C1's output is connected to C2's input.
+- Allows for complex commands to be constructed from simpler pieces.
+- The core of the Unix Philosophy.
+
+[[file:../src/lugshell.c::144]]
+
+
+* One Child Per Command
+
+- fork() system call creates a clone of the running process.
+- exec() family of calls replaces current process with another.
+- Child process inherits some things from the parent process.
+- e.g. file descriptors.
+- wait() family of calls to wait for the child to complete.
+
+[[file:../src/lugshell.c::103]]
+
+
+* Connecting The Outputs
+
+- pipe() and dup2()
+- C1 | C2
+- Idea: create an unnamed pipe.
+- Replace C1's stdout with the pipe's input side.
+- Replace C2's stdin with the pipe's output side.
+- C2 reads in what C1 writes out.
+
+[[file:../src/lugshell.c::103]]
+[[file:../src/lugshell.c::144]]
+
+
+* Signals
+
+- One method of sending a message to another process.
+- See the kill command.
+- Processes register "signal handlers".
+- Upon receipt, process jumps to signal handler, resumes
+  execution there.
+- Very non-local program flow.
+- Very dangerous.
+
+
+* Handling SIGINT
+
+- When user hits Ctrl-C, we want to handle it gracefully.
+- Terminate current line of input. Prompt user.
+- Just jump back to our read/eval loop.
+- setjmp(): sets up a "continuation" of sorts.
+- longjmp(): jump back to the continuation registered via setjmp().
+- BUT: not signal-safe.
+- Need POSIX functions: sigsetjmp() and siglongjmp()
+
+[[file:../src/lugshell.c::314]]
+[[file:../src/lugshell.c::45]]
+
+
+* All Together
+
+[[file:../src/lugshell.c]]
+
+
+* The End
+
+- Questions welcomed
