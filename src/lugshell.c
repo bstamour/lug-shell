@@ -234,6 +234,10 @@ static int do_cd(char **tokens) {
     return 0;
 }
 
+static int do_exit(char **) {
+  exit(0);
+}
+
 //
 // A table of built-in shell commands. Whenever you want to add a new 
 // built-in, write the functionality, then add it to this table. It will
@@ -242,7 +246,11 @@ static int do_cd(char **tokens) {
 static struct builtin_action {
     char *name;
     int (*action)(char **);
-} builtins[] = {{"echo", do_echo}, {"cd", do_cd}};
+} builtins[] = {{"echo", do_echo},
+                {"cd",   do_cd},
+                {"exit", do_exit},
+                {":wq", do_exit}
+                };
 
 /**
  * @brief Given an action entry and a command line parameter list,
